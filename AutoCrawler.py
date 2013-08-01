@@ -37,9 +37,13 @@ class CookieCrawler:
             self.request = self.__initRequest(url,cookieDict)
         self.interval = interval
 
-    def start(self,func,interval):
+    def start(self,func,interval = None):
         if self.request is None:
             raise InternalErrorException("url is not set yet!")
+        if self.interval is None:
+            if interval is None:
+                raise InternalErrorException("interval is not set yet!")
+            self.interval = interval
         self.interval = interval
         res = urllib2.urlopen(self.request)
         self.__mainLoop(self.request,res,self.cookieStr,self.interval,func)
