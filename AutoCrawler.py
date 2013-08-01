@@ -3,6 +3,11 @@ __author__ = 'liangrui.hlr'
 import urllib2
 import threading
 
+class InternalErrorException(Exception):
+    def __init__(self,msg):
+        Exception.__init__(self,msg)
+
+
 class CookieStr:
     def __init__(self):
         self.cookieDict = dict()
@@ -12,7 +17,8 @@ class CookieStr:
     def replaceCookie(self,key,value):
         self.addCookie(key,value)
 
-    def addAsDict(self,cookieDict):
+    def replaceAllFromDict(self,cookieDict):
+        self.cookieDict.clear()
         for key,value in cookieDict.items():
             self.cookieDict[key] = value
 
@@ -23,18 +29,28 @@ class CookieStr:
         return str
 
 class CookieCrawler:
-    def __init__(self,url,interval,cookieDict):
+    def __init__(self,url = None,interval = None,cookieDict = None):
+        self.request = None
         self.cookieStr = CookieStr()
-        self.request = self.__initRequest(url,cookieDict)
+        self.interval = None
+        if url is not None:
+            self.request = self.__initRequest(url,cookieDict)
         self.interval = interval
 
-    def start(self,func):
+    def start(self,func,interval):
+        if self.request is None:
+            raise InternalErrorException("url is not set yet!")
+        self.interval = interval
         res = urllib2.urlopen(self.request)
-        # func(res.read())
         self.__mainLoop(self.request,res,self.cookieStr,self.interval,func)
+
+    def setUrl(self,url):
+        self.request = self.__initRequest(url,self.cookieStr)
 
     def craw(self,url = None):
         if url is None:
+            if self.request is None:
+                raise InternalErrorException("url is not set yet!")
             res = urllib2.urlopen(self.request)
             return res.read()
         else:
@@ -46,8 +62,9 @@ class CookieCrawler:
     def end(self):
         t.cancel()
 
-    def __initRequest(self,url,cookieDict):
-        self.cookieStr.addAsDict(cookieDict)
+    def __initRequest(self,url,cookieDict = None):
+        if cookieDict is not None:
+            self.cookieStr.replaceAllFromDict(cookieDict)
         request = urllib2.Request(url)
         request.add_header('Cookie',self.cookieStr.toStr())
         return request
