@@ -2,6 +2,7 @@ __author__ = 'liangrui.hlr'
 
 import urllib2
 import threading
+import time
 
 class InternalErrorException(Exception):
     def __init__(self,msg):
@@ -64,6 +65,7 @@ class CookieCrawler:
         self.request = self.__initRequest(url,self.cookieStr)
 
     def craw(self,url = None):
+        start = time.time()
         if url is None:
             if self.request is None:
                 raise InternalErrorException("url is not set yet!")
@@ -77,15 +79,20 @@ class CookieCrawler:
             else:
                 self.request = urllib2.Request(url)
                 self.request.add_header('Cookie',self.cookieStr.toStr())
-        returnDict = dict()
-
+        result = dict()
         if isinstance(self.request,dict):
             for url,request in self.request.items():
-                returnDict[url] = urllib2.urlopen(request).read()
-            return returnDict
+                print "crawling: " + url
+                result[url] = urllib2.urlopen(request).read()
+
         else:
+            print "crawling: " + str(self.request.get_full_url())
             res = urllib2.urlopen(self.request)
-            return res.read()
+            result = res.read()
+        end = time.time()
+        print "complete!"
+        print "time cost:" + str(end - start) + "s"
+        return result
 
     def end(self):
         t = timerList[self.timerIndex]
@@ -133,6 +140,7 @@ class CookieCrawler:
             maintainRes = dict()
             for url,req in request.items():
                 self.__maintainCookie(req,response[url],cookieStr)
+                print "crawling: " + url
                 res = urllib2.urlopen(req)
                 maintainRes[url] = res
                 returnDict[url] = res.read()
@@ -142,6 +150,7 @@ class CookieCrawler:
             t.start()
         else:
             self.__maintainCookie(request,response,cookieStr)
+            print "crawling: " + str(request.get_full_url())
             res = urllib2.urlopen(request)
             func(res.read())
             t = threading.Timer(interval,self.__mainLoop,(request,res,cookieStr,interval,func))
