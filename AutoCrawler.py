@@ -1,5 +1,6 @@
 __author__ = 'liangrui.hlr'
 
+import urllib
 import urllib2
 import threading
 import time
@@ -8,10 +9,17 @@ class InternalErrorException(Exception):
     def __init__(self,msg):
         Exception.__init__(self,msg)
 
+class RequestData:
+    def __init__(self,id,url,data = None):
+        self.id = id
+        self.url = url
+        self.data = data
 
 class CookieStr:
-    def __init__(self):
+    def __init__(self,cookieDict = None):
         self.cookieDict = dict()
+        if cookieDict is not None:
+            self.replaceAllFromDict(cookieDict)
 
     def addCookie(self,key,value):
         self.cookieDict[key] = value
@@ -31,18 +39,23 @@ class CookieStr:
         return str
 
 class CookieCrawler:
-    def __init__(self,url = None,interval = None,cookieDict = None):
+    def __init__(self,requestData,interval = None,cookieDict = None,option = None):
         global timerList
         timerList = list()
-        self.request = None
+        # option definition
+        self.showLog = False
+        if option is not None:
+            if option.has_key('showLog'):
+                self.showLog = option['showLog']
+        # initial fields
         self.cookieStr = CookieStr()
-        self.interval = None
+        self.interval = interval
         self.timerIndex = -1
-        if url is not None:
-            self.request = self.__initRequest(url,cookieDict)
+        self.request = self.__initRequest(requestData,cookieDict)
         self.interval = interval
 
     def start(self,func,interval = None):
+        self.handler = func
         if self.request is None:
             raise InternalErrorException("url is not set yet!")
         if interval is None:
@@ -52,54 +65,67 @@ class CookieCrawler:
             self.interval = interval
 
         self.timerIndex = len(timerList)
-        if isinstance(self.request,dict):
-            res = dict()
-            for url,request in self.request.items():
-                res[url] = urllib2.urlopen(request)
-            self.__mainLoop(self.request,res,self.cookieStr,func)
-        else:
-            res = urllib2.urlopen(self.request)
-            self.__mainLoop(self.request,res,self.cookieStr,func)
+        res = dict()
+        for id,req in self.request.items():
+            res[id] = self.__crawl(req)
+        self.__mainLoop(self.request,res,self.cookieStr)
 
     def setUrl(self,url):
         self.request = self.__initRequest(url,self.cookieStr)
 
-    def craw(self,url = None):
-        if url is None:
+    def hotReplaceRequestData(self,requestData,cookieDict):
+        self.request = self.__initRequest(requestData,cookieDict)
+
+    def hotReplaceCookie(self,cookieDict):
+        self.cookieStr.replaceAllFromDict(cookieDict)
+
+    # replace the handler function for handling the crawling result
+    def hotReplaceHandler(self,func):
+        self.handler = func
+
+    def setOption(self,option):
+        if option.has_key('showLog'):
+            self.showLog = option['showLog']
+
+    def crawl(self,requestData = None):
+        if requestData is None:
             if self.request is None:
                 raise InternalErrorException("url is not set yet!")
         else:
-            if isinstance(url,list):
-                self.request = dict()
-                for urlitem in url:
-                    req = urllib2.Request(urlitem)
-                    req.add_header('Cookie',self.cookieStr.toStr())
-                    self.request[urlitem] = req
-            else:
-                self.request = urllib2.Request(url)
-                self.request.add_header('Cookie',self.cookieStr.toStr())
+            self.request = self.__initRequest(requestData)
 
-        result = self.__crawl(self.request)
-        return result
+        result = dict()
+        for id,req in self.request.items():
+            result[id] = self.__crawl(req)
+
+        returnDict = dict()
+        if isinstance(result,dict):
+            for id,res in result.items():
+                returnDict[id] = res.read()
+                res.close()
+            return returnDict
+        else:
+            content = result.read()
+            result.close()
+            return content
 
     def end(self):
         t = timerList[self.timerIndex]
         t.cancel()
 
-    def __initRequest(self,url,cookieDict = None):
+    def __initRequest(self,requestData,cookieDict = None):
         if cookieDict is not None:
             self.cookieStr.replaceAllFromDict(cookieDict)
-        if isinstance(url,list):
+        if isinstance(requestData,list):
             requests = dict()
-            for urlitem in url:
-                request = urllib2.Request(urlitem)
+            for dataItem in requestData:
+                encodeData = None
+                if dataItem.data is not None:
+                    encodeData = urllib.urlencode(dataItem.data)
+                request = urllib2.Request(dataItem.url,encodeData)
                 request.add_header('Cookie',self.cookieStr.toStr())
-                requests[urlitem] = request
+                requests[dataItem.id] = request
             return requests
-        else:
-            request = urllib2.Request(url)
-            request.add_header('Cookie',self.cookieStr.toStr())
-            return request
 
     def __maintainCookie(self,request,response,cookieStr):
         headers = response.info()
@@ -109,7 +135,8 @@ class CookieCrawler:
                 cookieStr.replaceCookie(key,value)
 
             request.add_header('Cookie',cookieStr.toStr())
-            print ckDict
+            if self.showLog:
+                print "receive new cookies: " + str(ckDict)
         return request
 
     def __getCookieFromHeadStr(self,setCookieStr):
@@ -122,48 +149,42 @@ class CookieCrawler:
                 resDict[keyValueList[0]] = keyValueList[1]
         return resDict
 
-    def __mainLoop(self,request,response,cookieStr,func):
+    def __mainLoop(self,request,response,cookieStr):
         if isinstance(request,dict):
             returnDict = dict()
-            for url,req in request.items():
-                self.__maintainCookie(req,response[url],cookieStr)
+            maintainRes = dict()
+            for id,req in request.items():
+                self.__maintainCookie(req,response[id],cookieStr)
+                response[id].close()
+                maintainRes[id] = self.__crawl(req)
 
-            maintainRes = self.__crawl(request)
-            for url,req in maintainRes.items():
-                returnDict[url] = req.read()
+            for id,req in maintainRes.items():
+                returnDict[id] = req.read()
 
-            func(returnDict)
+            self.handler(returnDict)
             interval = self.interval
-            t = threading.Timer(interval,self.__mainLoop,(request,maintainRes,cookieStr,interval,func))
-            timerList.append(t)
-            t.start()
-        else:
-            self.__maintainCookie(request,response,cookieStr)
-            res = self.__crawl(request)
-            func(res.read())
-            interval = self.interval
-            t = threading.Timer(interval,self.__mainLoop,(request,res,cookieStr,interval,func))
+            t = threading.Timer(interval,self.__mainLoop,(request,maintainRes,cookieStr))
             timerList.append(t)
             t.start()
 
+    # function  use urllib2 to open the request, return the response
+    # para      request:single request object, not list
+    # return    the response object returned by urllib2.urlopen() function
     def __crawl(self,request):
         start = time.time()
-        if isinstance(request,dict):
-            result = dict()
-            for url,req in request.items():
-                print "crawling: " + str(req.get_full_url())
-                result[url] = urllib2.urlopen(req)
-        else:
+        if self.showLog:
             print "crawling: " + str(request.get_full_url())
-            result = urllib2.urlopen(request)
+        result = urllib2.urlopen(request)
 
         end = time.time()
         cost = end - start
-        print "complete!"
-        print "time cost:" + str(cost) + "s"
+        if self.showLog:
+            print "complete!"
+            print "time cost:" + str(cost) + "s"
         if self.interval is not None and self.interval <= cost:
-            print "interval is less than crawling time!"
             self.interval = cost*1.5
-            print "adjust interval to " + str(self.interval)
+            if self.showLog:
+                print "interval is less than crawling time!"
+                print "adjust interval to " + str(self.interval)
 
         return result
