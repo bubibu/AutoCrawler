@@ -14,6 +14,7 @@ Quick Start
 ###Sample1
     
     import AutoCrawler
+
     
     #define a handler
     def handler(msg): 
@@ -28,11 +29,19 @@ Quick Start
     #define the interval
     interval = 3
     
-    #define the url
+    #define the request url and data
     url = "http://www.example.com/crawpage?page=1"
+    data = {
+        "keyword":"test",
+        "type":0
+    }
+
+    #define the requestData object
+    requestData = AutoCrawler.RequestData(url,data)
     
-    crawler = AutoCrawler.CookieCrawler(url,interval,cookieDict)
+    #construct the CookieCrawler object
+    crawler = AutoCrawler.CookieCrawler(url,[requestData],interval,cookieDict)
     
-    #set the pre-defined handler below
+    #set the pre-defined handler below, and now you can start it
     crawler.start(handler)
     
