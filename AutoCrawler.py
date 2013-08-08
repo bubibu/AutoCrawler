@@ -56,6 +56,7 @@ class CookieCrawler:
 
     def start(self,func,interval = None):
         self.handler = func
+        self.isFirstLoop = True
         if self.request is None:
             raise InternalErrorException("url is not set yet!")
         if interval is None:
@@ -65,10 +66,10 @@ class CookieCrawler:
             self.interval = interval
 
         self.timerIndex = len(timerList)
-        res = dict()
-        for id,req in self.request.items():
-            res[id] = self.__crawl(req)
-        self.__mainLoop(self.request,res,self.cookieStr)
+        # res = dict()
+        # for id,req in self.request.items():
+        #     res[id] = self.__crawl(req)
+        self.__mainLoop()
 
     def setUrl(self,url):
         self.request = self.__initRequest(url,self.cookieStr)
@@ -134,9 +135,14 @@ class CookieCrawler:
             for key,value in ckDict.items():
                 cookieStr.replaceCookie(key,value)
 
-            request.add_header('Cookie',cookieStr.toStr())
             if self.showLog:
                 print "receive new cookies: " + str(ckDict)
+            request.add_header('Cookie',cookieStr.toStr())
+            for id,req in self.request.items():
+                if req.get_full_url() == request.get_full_url():
+                    if self.showLog:
+                        print "urlID:" + str(id) + " add cookie"
+                    req.add_header('Cookie',cookieStr.toStr())
         return request
 
     def __getCookieFromHeadStr(self,setCookieStr):
@@ -149,42 +155,44 @@ class CookieCrawler:
                 resDict[keyValueList[0]] = keyValueList[1]
         return resDict
 
-    def __mainLoop(self,request,response,cookieStr):
-        if isinstance(request,dict):
+    def __mainLoop(self):
+        if isinstance(self.request,dict):
+            start = time.time()
             returnDict = dict()
             maintainRes = dict()
-            for id,req in request.items():
-                self.__maintainCookie(req,response[id],cookieStr)
-                response[id].close()
+            for id,req in self.request.items():
                 maintainRes[id] = self.__crawl(req)
+                self.__maintainCookie(req,maintainRes[id],self.cookieStr)
+
+            end = time.time()
+            cost = end - start
+            if self.showLog:
+                print "complete!"
+                print "time cost:" + str(cost) + "s"
+            if self.interval is not None and self.interval <= cost:
+                self.interval = cost*1.5
+                if self.showLog:
+                    print "interval is less than crawling time!"
+                    print "adjust interval to " + str(self.interval)
 
             for id,req in maintainRes.items():
                 returnDict[id] = req.read()
 
             self.handler(returnDict)
             interval = self.interval
-            t = threading.Timer(interval,self.__mainLoop,(request,maintainRes,cookieStr))
-            timerList.append(t)
+            t = threading.Timer(interval,self.__mainLoop)
+            if self.isFirstLoop:
+                self.isFirstLoop = False
+                timerList.append(t)
+            else:
+                timerList[self.timerIndex] = t
             t.start()
 
     # function  use urllib2 to open the request, return the response
     # para      request:single request object, not list
     # return    the response object returned by urllib2.urlopen() function
     def __crawl(self,request):
-        start = time.time()
         if self.showLog:
             print "crawling: " + str(request.get_full_url())
         result = urllib2.urlopen(request)
-
-        end = time.time()
-        cost = end - start
-        if self.showLog:
-            print "complete!"
-            print "time cost:" + str(cost) + "s"
-        if self.interval is not None and self.interval <= cost:
-            self.interval = cost*1.5
-            if self.showLog:
-                print "interval is less than crawling time!"
-                print "adjust interval to " + str(self.interval)
-
         return result
