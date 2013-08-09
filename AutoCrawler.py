@@ -40,8 +40,6 @@ class CookieStr:
 
 class CookieCrawler:
     def __init__(self,requestData,interval = None,cookieDict = None,option = None):
-        global timerList
-        timerList = list()
         # option definition
         self.showLog = False
         if option is not None:
@@ -50,7 +48,6 @@ class CookieCrawler:
         # initial fields
         self.cookieStr = CookieStr()
         self.interval = interval
-        self.timerIndex = -1
         self.request = self.__initRequest(requestData,cookieDict)
         self.interval = interval
 
@@ -65,11 +62,8 @@ class CookieCrawler:
         else:
             self.interval = interval
 
-        self.timerIndex = len(timerList)
-        # res = dict()
-        # for id,req in self.request.items():
-        #     res[id] = self.__crawl(req)
-        self.__mainLoop()
+        th = threading.Thread(target=self.__mainLoop)
+        th.start()
 
     def setUrl(self,url):
         self.request = self.__initRequest(url,self.cookieStr)
@@ -110,10 +104,6 @@ class CookieCrawler:
             result.close()
             return content
 
-    def end(self):
-        t = timerList[self.timerIndex]
-        t.cancel()
-
     def __initRequest(self,requestData,cookieDict = None):
         if cookieDict is not None:
             self.cookieStr.replaceAllFromDict(cookieDict)
@@ -135,14 +125,15 @@ class CookieCrawler:
             for key,value in ckDict.items():
                 cookieStr.replaceCookie(key,value)
 
-            if self.showLog:
-                print "receive new cookies: " + str(ckDict)
             request.add_header('Cookie',cookieStr.toStr())
             for id,req in self.request.items():
                 if req.get_full_url() == request.get_full_url():
                     if self.showLog:
                         print "urlID:" + str(id) + " add cookie"
                     req.add_header('Cookie',cookieStr.toStr())
+            if self.showLog:
+                print "receive new cookies: " + str(ckDict)
+                print "cookieHeader:" + self.cookieStr.toStr()
         return request
 
     def __getCookieFromHeadStr(self,setCookieStr):
@@ -156,7 +147,7 @@ class CookieCrawler:
         return resDict
 
     def __mainLoop(self):
-        if isinstance(self.request,dict):
+        while True:
             start = time.time()
             returnDict = dict()
             maintainRes = dict()
@@ -177,16 +168,8 @@ class CookieCrawler:
 
             for id,req in maintainRes.items():
                 returnDict[id] = req.read()
-
             self.handler(returnDict)
-            interval = self.interval
-            t = threading.Timer(interval,self.__mainLoop)
-            if self.isFirstLoop:
-                self.isFirstLoop = False
-                timerList.append(t)
-            else:
-                timerList[self.timerIndex] = t
-            t.start()
+            time.sleep(self.interval)
 
     # function  use urllib2 to open the request, return the response
     # para      request:single request object, not list
