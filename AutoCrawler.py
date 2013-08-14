@@ -4,7 +4,6 @@ import urllib
 import urllib2
 import threading
 import time
-import sys
 
 class InternalErrorException(Exception):
     def __init__(self,msg):
@@ -36,8 +35,25 @@ class WorkThread(threading.Thread):
         self.running = False
 
 
+class CookieHandler(urllib2.BaseHandler):
+    def __init__(self,cookieDict):
+        self.cookieJar = CookieJar()
+        self.cookieJar.replaceAllFromDict(cookieDict)
 
-class CookieStr:
+    def http_request(self, request):
+        self.cookieJar.extractToRequest(request)
+        return request
+
+    def http_response(self, request, response):
+        self.cookieJar.addCookieFromResponse(response)
+        self.cookieJar.extractToRequest(request)
+        return response
+
+    https_request = http_request
+    https_response = http_response
+
+
+class CookieJar:
     def __init__(self,cookieDict = None):
         self.cookieDict = dict()
         if cookieDict is not None:
@@ -54,14 +70,35 @@ class CookieStr:
         for key,value in cookieDict.items():
             self.cookieDict[key] = value
 
+    def extractToRequest(self,request):
+        request.add_header("Cookie",self.toStr())
+
+    def addCookieFromResponse(self,response):
+        headers = response.info()
+        if headers.has_key('Set-Cookie'):
+            ckDict = self.__getCookieFromHeadStr(headers['Set-Cookie'])
+            print "receive cookie: " + str(ckDict)
+            for key,value in ckDict.items():
+                self.addCookie(key.strip(' '),value.strip(' '))
+
     def toStr(self):
         str = ""
         for key,value in self.cookieDict.items():
             str += (key.strip(' ')+"="+value.strip(' ')+";")
         return str
 
+    def __getCookieFromHeadStr(self,setCookieStr):
+        resDict = dict()
+        ckItem = str(setCookieStr).split(',')
+        for item in ckItem:
+            ckKeyValue = item.split(';')
+            if ckKeyValue[0].find("=") != -1:
+                keyValueList = ckKeyValue[0].split('=')
+                resDict[keyValueList[0]] = keyValueList[1]
+        return resDict
+
 class CookieCrawler:
-    def __init__(self,requestData,interval = None,cookieDict = None,option = None):
+    def __init__(self,requestData,interval = None,option = None):
         # const fields
         self.checkInterval = 3
         self.breakInterval = 3
@@ -78,11 +115,15 @@ class CookieCrawler:
         if self.debug:
             self.errorFile = file(str(time.time()) + "debug.log","w")
         # initial fields
-        self.cookieStr = CookieStr()
+        self.cookieStr = CookieJar()
         self.interval = interval
-        self.request = self.__initRequest(requestData,cookieDict)
+        self.request = self.__initRequest(requestData)
         self.interval = interval
         self.lastCrawlTime = time.time()
+
+    def addHandler(self,*handlers):
+        self.opener = urllib2.build_opener(*handlers)
+        urllib2.install_opener(self.opener)
 
     def start(self,func,interval = None):
         self.handler = func
@@ -162,9 +203,7 @@ class CookieCrawler:
         self.errorFile.write(msg + "\n")
         self.errorFile.flush()
 
-    def __initRequest(self,requestData,cookieDict = None):
-        if cookieDict is not None:
-            self.cookieStr.replaceAllFromDict(cookieDict)
+    def __initRequest(self,requestData):
         if isinstance(requestData,list):
             requests = dict()
             for dataItem in requestData:
@@ -172,32 +211,8 @@ class CookieCrawler:
                 if dataItem.data is not None:
                     encodeData = urllib.urlencode(dataItem.data)
                 request = urllib2.Request(dataItem.url,encodeData)
-                request.add_header('Cookie',self.cookieStr.toStr())
                 requests[dataItem.id] = request
             return requests
-
-    def __maintainCookie(self,request,response,cookieStr):
-        headers = response.info()
-        if 'Set-Cookie' in headers:
-            ckDict = self.__getCookieFromHeadStr(headers['Set-Cookie'])
-            for key,value in ckDict.items():
-                cookieStr.replaceCookie(key.strip(' '),value.strip(' '))
-            for id,req in self.request.items():
-                req.add_header('Cookie',cookieStr.toStr())
-            if self.showLog:
-                print "receive new cookies: " + str(ckDict)
-                print "cookieHeader:" + self.cookieStr.toStr()
-        return request
-
-    def __getCookieFromHeadStr(self,setCookieStr):
-        resDict = dict()
-        ckItem = str(setCookieStr).split(',')
-        for item in ckItem:
-            ckKeyValue = item.split(';')
-            if ckKeyValue[0].find("=") != -1:
-                keyValueList = ckKeyValue[0].split('=')
-                resDict[keyValueList[0]] = keyValueList[1]
-        return resDict
 
     def __mainLoop(self):
         start = time.time()
@@ -205,7 +220,6 @@ class CookieCrawler:
         maintainRes = dict()
         for id,req in self.request.items():
             maintainRes[id] = self.__crawl(req)
-            self.__maintainCookie(req,maintainRes[id],self.cookieStr)
 
         end = time.time()
         cost = end - start
