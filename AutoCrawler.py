@@ -1,5 +1,4 @@
 __author__ = 'liangrui.hlr'
-
 import urllib
 import urllib2
 import threading
@@ -77,7 +76,6 @@ class CookieJar:
         headers = response.info()
         if headers.has_key('Set-Cookie'):
             ckDict = self.__getCookieFromHeadStr(headers['Set-Cookie'])
-            print "receive cookie: " + str(ckDict)
             for key,value in ckDict.items():
                 self.addCookie(key.strip(' '),value.strip(' '))
 
@@ -97,11 +95,16 @@ class CookieJar:
                 resDict[keyValueList[0]] = keyValueList[1]
         return resDict
 
+
 class CookieCrawler:
+
     def __init__(self,requestData,interval = None,option = None):
         # const fields
         self.checkInterval = 3
         self.breakInterval = 3
+
+        # build default opener
+        self.opener = urllib2.build_opener()
 
         # option definition
         self.showLog = False
@@ -123,7 +126,6 @@ class CookieCrawler:
 
     def addHandler(self,*handlers):
         self.opener = urllib2.build_opener(*handlers)
-        urllib2.install_opener(self.opener)
 
     def start(self,func,interval = None):
         self.handler = func
@@ -160,11 +162,8 @@ class CookieCrawler:
                 print "restart the thread"
                 self.thread.start()
 
-    def setUrl(self,url):
-        self.request = self.__initRequest(url,self.cookieStr)
-
-    def hotReplaceRequestData(self,requestData,cookieDict):
-        self.request = self.__initRequest(requestData,cookieDict)
+    def hotReplaceRequestData(self,requestData):
+        self.request = self.__initRequest(requestData)
 
     def hotReplaceCookie(self,cookieDict):
         self.cookieStr.replaceAllFromDict(cookieDict)
@@ -255,5 +254,5 @@ class CookieCrawler:
     def __crawl(self,request):
         if self.showLog:
             print "crawling: " + str(request.get_full_url())
-        result = urllib2.urlopen(request)
+        result = self.opener.open(request)
         return result
