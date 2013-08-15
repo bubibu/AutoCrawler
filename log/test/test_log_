@@ -1,0 +1,3 @@
+2013-08-15 20:59:43,848 - test - DEBUG - crawling: http://www.baidu.com
+2013-08-15 20:59:46,857 - test - DEBUG - complete!
+2013-08-15 20:59:46,857 - test - DEBUG - time cost:3.00900006294s
