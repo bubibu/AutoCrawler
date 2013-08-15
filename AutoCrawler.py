@@ -57,16 +57,20 @@ class CookieHandler(urllib2.BaseHandler):
 
     def setLogger(self,logger):
         self.logger = logger
+        self.cookieJar.setLogger(logger)
 
     https_request = http_request
     https_response = http_response
 
 
 class CookieJar:
-    def __init__(self,cookieDict = None):
+    def __init__(self, cookieDict = None):
         self.cookieDict = dict()
         if cookieDict is not None:
             self.replaceAllFromDict(cookieDict)
+
+    def setLogger(self,logger):
+        self.logger = logger
 
     def addCookie(self,key,value):
         self.cookieDict[key] = value
@@ -84,6 +88,7 @@ class CookieJar:
         if not 'Set-Cookie' in headers:
             return
         ckDict = self.__getCookieFromHeadStr(headers['Set-Cookie'])
+        self.logger.debug("receive cookie: " + str(ckDict))
         for key,value in ckDict.iteritems():
             self.addCookie(key.strip(' '),value.strip(' '))
 
@@ -121,7 +126,7 @@ class CookieCrawler:
             os.makedirs(path)
 
         #create timeRotationHandler
-        trh = logging.handlers.TimedRotatingFileHandler(filename=("log" + os.sep + name + os.sep + name + "_log_"), when='s', interval=5 ,backupCount=100)
+        trh = logging.handlers.TimedRotatingFileHandler(filename=("log" + os.sep + name + os.sep + name + "_log_"), when='h', interval=1 ,backupCount=100)
         trh.setLevel(logger_level)
         trh.suffix = "%Y%m%d-%H%M%S.log"
         #add formatter
