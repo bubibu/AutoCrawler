@@ -40,7 +40,10 @@ Quick Start
     requestData = AutoCrawler.RequestData(url,data)
     
     #construct the CookieCrawler object
-    crawler = AutoCrawler.CookieCrawler(url,[requestData],interval,cookieDict)
+    crawler = AutoCrawler.CookieCrawler(url,[requestData],interval)
+
+    #set the crawl process handler
+    crawler.addHandler(AutoCrawler.CookieHandler(cookieDict))
     
     #set the pre-defined handler below, and now you can start it
     crawler.start(handler)
