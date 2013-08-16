@@ -232,10 +232,10 @@ class CookieCrawler:
     def __timeout_handler(self,request):
         retry_count = 0
         is_retry_success = False
-        if retry_count >= TIMEOUT_RETRY_COUNT:
-            raise InternalErrorException("timeout retry too many times!")
 
         while not is_retry_success:
+            if retry_count >= TIMEOUT_RETRY_COUNT:
+                raise InternalErrorException("timeout retry too many times!")
             try:
                 retry_count += 1
                 self.logger.info("retry:" + str(retry_count))
