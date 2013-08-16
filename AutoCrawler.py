@@ -7,9 +7,13 @@ import logging
 import logging.handlers
 import os
 
+
 #const fields
 DEBUG = logging.DEBUG
 INFO = logging.INFO
+TIMEOUT_SLEEP_TIME = 120 #sleep 120 seconds
+TIMEOUT_RETRY_COUNT = 10 #max retry count
+
 
 class InternalErrorException(Exception):
     def __init__(self, msg):
@@ -153,7 +157,6 @@ class CookieCrawler:
         if self.interval is None:
             self.interval = interval
 
-        print self.interval
         self.thread = WorkThread(self.__mainLoop,self.interval)
         self.thread.start()
 
@@ -218,5 +221,28 @@ class CookieCrawler:
     # return    the response object returned by urllib2.urlopen() function
     def __crawl(self,request):
         self.logger.debug("crawling: " + str(request.get_full_url()))
-        result = self.opener.open(request)
+        #if server responses gateway 504 timeout, just sleep a while and retry until everything acts normally
+        try:
+            result = self.opener.open(request)
+        except urllib2.URLError,urllib2.HTTPError:
+            self.logger.error("504 gateway timeout!!retry begins!")
+            result = self.__timeout_handler(request)
+        return result
+
+    def __timeout_handler(self,request):
+        retry_count = 0
+        is_retry_success = False
+        if retry_count >= TIMEOUT_RETRY_COUNT:
+            raise InternalErrorException("timeout retry too many times!")
+
+        while not is_retry_success:
+            try:
+                retry_count += 1
+                self.logger.info("retry:" + str(retry_count))
+                time.sleep(TIMEOUT_SLEEP_TIME)
+                result = self.opener.open(request)
+                is_retry_success = True
+            except urllib2.URLError,urllib2.HTTPError:
+                self.logger.info("retry failed!")
+
         return result
