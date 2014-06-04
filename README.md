@@ -15,7 +15,6 @@ Quick Start
     
     import AutoCrawler
 
-    
     #define a handler
     def handler(msg): 
       print msg
@@ -26,7 +25,7 @@ Quick Start
       'uid':'nekosama'
     }
     
-    #define the interval
+    #define the interval (seconds)
     interval = 3
     
     #define the request url and data
